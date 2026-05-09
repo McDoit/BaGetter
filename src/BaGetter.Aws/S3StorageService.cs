@@ -91,6 +91,11 @@ public class S3StorageService : IStorageService
         await content.CopyToAsync(seekableContent, 4096, cancellationToken);
         seekableContent.Seek(0, SeekOrigin.Begin);
 
+        // Pre-compute the MD5 so we can compare it to the existing object's ETag on conflict,
+        // without needing to re-read the stream after a 412 PreconditionFailed response.
+        var uploadedMd5Base64 = ComputeMd5Base64(seekableContent);
+        seekableContent.Seek(0, SeekOrigin.Begin);
+
         var putRequest = new PutObjectRequest
         {
             BucketName = _bucket,
@@ -114,17 +119,13 @@ public class S3StorageService : IStorageService
                || string.Equals(ex.ErrorCode, "PreconditionFailed", StringComparison.OrdinalIgnoreCase))
         {
             // The object already exists. Check whether it has the same content.
-            seekableContent.Seek(0, SeekOrigin.Begin);
-            var uploadedMd5 = ComputeMd5Base64(seekableContent);
-
             var metadata = await _client.GetObjectMetadataAsync(_bucket, PrepareKey(path), cancellationToken);
 
             // S3 ETag for non-multipart uploads is the hex MD5 of the object.
-            var existingEtag = metadata.ETag?.Trim('"');
-            var existingMd5Hex = existingEtag;
+            var existingMd5Hex = metadata.ETag?.Trim('"');
 
             // Convert our base64 MD5 to hex for comparison.
-            var uploadedMd5Hex = Convert.ToHexString(Convert.FromBase64String(uploadedMd5)).ToLowerInvariant();
+            var uploadedMd5Hex = Convert.ToHexString(Convert.FromBase64String(uploadedMd5Base64)).ToLowerInvariant();
 
             return string.Equals(uploadedMd5Hex, existingMd5Hex, StringComparison.OrdinalIgnoreCase)
                 ? StoragePutResult.AlreadyExists

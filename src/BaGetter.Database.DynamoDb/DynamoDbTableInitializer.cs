@@ -16,6 +16,9 @@ namespace BaGetter.Database.DynamoDb;
 /// </summary>
 public class DynamoDbTableInitializer : IHostedService
 {
+    private const int MaxWaitAttempts = 30;
+    private const int WaitIntervalSeconds = 2;
+
     private readonly IAmazonDynamoDB _client;
     private readonly DynamoDbDatabaseOptions _options;
     private readonly ILogger<DynamoDbTableInitializer> _logger;
@@ -84,9 +87,9 @@ public class DynamoDbTableInitializer : IHostedService
 
         // Wait until the table (and GSI) becomes ACTIVE before returning.
         var waitAttempts = 0;
-        while (waitAttempts++ < 30)
+        while (waitAttempts++ < MaxWaitAttempts)
         {
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(WaitIntervalSeconds), cancellationToken);
 
             var desc = await _client.DescribeTableAsync(_options.TableName, cancellationToken);
             var tableActive = desc.Table.TableStatus == TableStatus.ACTIVE;

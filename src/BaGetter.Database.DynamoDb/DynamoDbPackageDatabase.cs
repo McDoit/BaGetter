@@ -307,6 +307,9 @@ public class DynamoDbPackageDatabase : IPackageDatabase
             { "ProjectUrl", new AttributeValue(p.ProjectUrlString) },
             { "RepositoryUrl", new AttributeValue(p.RepositoryUrlString) },
             { "RepositoryType", new AttributeValue(p.RepositoryType ?? string.Empty) },
+            // DynamoDB does not allow empty string sets (SS type), so we use a single empty
+            // string as a sentinel value when there are no authors or tags. These are
+            // filtered back out in FromItem via the Where(s => !string.IsNullOrEmpty) call.
             { "Authors", new AttributeValue { SS = p.Authors?.Length > 0 ? new List<string>(p.Authors) : new List<string> { string.Empty } } },
             { "Tags", new AttributeValue { SS = p.Tags?.Length > 0 ? new List<string>(p.Tags) : new List<string> { string.Empty } } },
             {

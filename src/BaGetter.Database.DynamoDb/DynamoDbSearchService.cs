@@ -30,6 +30,7 @@ public class DynamoDbSearchService : ISearchService
     private const string SearchPartitionValue = "PKG";
     private const string SearchIndexName = "SearchIndex";
     private const string VersionSkPrefix = "VERSION#";
+    private const int MaxDependentResults = 20;
 
     private readonly IAmazonDynamoDB _client;
     private readonly string _tableName;
@@ -142,7 +143,7 @@ public class DynamoDbSearchService : ISearchService
             .Where(p => p.Dependencies.Any(d =>
                 string.Equals(d.Id, packageId, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(p => p.Downloads)
-            .Take(20)
+            .Take(MaxDependentResults)
             .Select(p => new PackageDependent
             {
                 Id = p.Id,

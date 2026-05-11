@@ -20,8 +20,12 @@ Create a bucket in the region of your choice and update `appsettings.json` (or s
 
 ### DynamoDB Table
 
-The sample **auto-creates the table and GSI on startup** via `DynamoDbTableInitializer`.
-No manual table creation is required. If you prefer to create it manually:
+By default, this sample uses `AddDynamoDbDatabase()` which includes `DynamoDbTableInitializer`.
+That initializer creates the table + GSI if they do not exist.
+
+If your production environment pre-creates infrastructure (recommended), you can create the table
+ahead of time and run with only `dynamodb:DescribeTable/GetItem/PutItem/UpdateItem/DeleteItem/Query`
+permissions (without `CreateTable`). In that case, the schema must match:
 
 | Property          | Value                       |
 |-------------------|-----------------------------|
@@ -32,6 +36,20 @@ No manual table creation is required. If you prefer to create it manually:
 | GSI name          | `SearchIndex`               |
 | GSI partition key | `SearchPartition` (String)  |
 | GSI sort key      | `LowerId` (String)          |
+
+> **Important**  
+> If the table exists but does not include the `SearchIndex` GSI (`SearchPartition` + `LowerId`),
+> startup will fail when DynamoDB is configured as the active database.
+
+### Custom hosting note
+
+If you embed BaGetter into your own ASP.NET Core host, DynamoDB services are only wired when you call:
+
+```csharp
+bagetter.AddDynamoDbDatabase();
+```
+
+If you do not call that extension, BaGetter will not register DynamoDB providers or table initialization.
 
 ---
 

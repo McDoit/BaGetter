@@ -1,11 +1,15 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Amazon;
 using Amazon.DynamoDBv2;
 using Amazon.Runtime;
 using BaGetter.Core;
 using BaGetter.Database.DynamoDb;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace BaGetter;
@@ -76,8 +80,17 @@ public static class DynamoDbApplicationExtensions
             return provider.GetRequiredService<NullSearchIndexer>();
         });
 
-        // Auto-create the DynamoDB table on startup.
-        app.Services.AddHostedService<DynamoDbTableInitializer>();
+        // Auto-create the DynamoDB table on startup only when DynamoDB is configured as the database.
+        app.Services.AddSingleton<IHostedService>(provider =>
+        {
+            var config = provider.GetRequiredService<IConfiguration>();
+            if (!config.HasDatabaseType("AwsDynamoDb"))
+            {
+                return new NoOpHostedService();
+            }
+
+            return ActivatorUtilities.CreateInstance<DynamoDbTableInitializer>(provider);
+        });
 
         return app;
     }
@@ -89,5 +102,11 @@ public static class DynamoDbApplicationExtensions
         app.AddDynamoDbDatabase();
         app.Services.Configure(configure);
         return app;
+    }
+
+    private sealed class NoOpHostedService : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

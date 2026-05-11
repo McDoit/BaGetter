@@ -16,21 +16,35 @@ namespace BaGetter.Database.DynamoDb;
 /// </summary>
 public class DynamoDbTableInitializer : IHostedService
 {
-    private const int MaxWaitAttempts = 30;
-    private const int WaitIntervalSeconds = 2;
+    private const int DefaultMaxWaitAttempts = 30;
+    private const int DefaultWaitIntervalSeconds = 2;
 
     private readonly IAmazonDynamoDB _client;
     private readonly DynamoDbDatabaseOptions _options;
     private readonly ILogger<DynamoDbTableInitializer> _logger;
+    private readonly int _maxWaitAttempts;
+    private readonly int _waitIntervalSeconds;
 
     public DynamoDbTableInitializer(
         IAmazonDynamoDB client,
         IOptions<DynamoDbDatabaseOptions> options,
         ILogger<DynamoDbTableInitializer> logger)
+        : this(client, options, logger, DefaultMaxWaitAttempts, DefaultWaitIntervalSeconds)
+    {
+    }
+
+    public DynamoDbTableInitializer(
+        IAmazonDynamoDB client,
+        IOptions<DynamoDbDatabaseOptions> options,
+        ILogger<DynamoDbTableInitializer> logger,
+        int maxWaitAttempts,
+        int waitIntervalSeconds)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _maxWaitAttempts = maxWaitAttempts;
+        _waitIntervalSeconds = waitIntervalSeconds;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -87,21 +101,29 @@ public class DynamoDbTableInitializer : IHostedService
 
         // Wait until the table (and GSI) becomes ACTIVE before returning.
         var waitAttempts = 0;
-        while (waitAttempts++ < MaxWaitAttempts)
+        string finalTableStatus = "UNKNOWN";
+        string finalGsiStatus = "UNKNOWN";
+        while (waitAttempts++ < _maxWaitAttempts)
         {
-            await Task.Delay(TimeSpan.FromSeconds(WaitIntervalSeconds), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(_waitIntervalSeconds), cancellationToken);
 
             var desc = await _client.DescribeTableAsync(_options.TableName, cancellationToken);
             var tableActive = desc.Table.TableStatus == TableStatus.ACTIVE;
-            var gsiActive = desc.Table.GlobalSecondaryIndexes
-                .TrueForAll(g => g.IndexStatus == IndexStatus.ACTIVE);
+            finalTableStatus = desc.Table.TableStatus?.Value ?? "UNKNOWN";
+            var gsiActive = desc.Table.GlobalSecondaryIndexes is null
+                || desc.Table.GlobalSecondaryIndexes.TrueForAll(g => g.IndexStatus == IndexStatus.ACTIVE);
+            finalGsiStatus = desc.Table.GlobalSecondaryIndexes?.Count > 0
+                ? string.Join(",", desc.Table.GlobalSecondaryIndexes.ConvertAll(g => $"{g.IndexName}:{g.IndexStatus?.Value ?? "UNKNOWN"}"))
+                : "NONE";
 
             if (tableActive && gsiActive)
                 return;
         }
 
-        _logger.LogWarning(
-            "DynamoDB table '{TableName}' did not reach ACTIVE status within the expected time.",
-            _options.TableName);
+        throw new InvalidOperationException(
+            $"DynamoDB table '{_options.TableName}' failed to reach ACTIVE state within " +
+            $"{_maxWaitAttempts * _waitIntervalSeconds} seconds. " +
+            $"Last observed table status: {finalTableStatus}. " +
+            $"Last observed GSI status: {finalGsiStatus}.");
     }
 }

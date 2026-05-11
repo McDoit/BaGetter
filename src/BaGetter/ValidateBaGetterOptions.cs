@@ -19,6 +19,7 @@ public class ValidateBaGetterOptions
     private static readonly HashSet<string> ValidDatabaseTypes
         = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
+            "AwsDynamoDb",
             "AzureTable",
             "MySql",
             "PostgreSql",
@@ -41,6 +42,7 @@ public class ValidateBaGetterOptions
     private static readonly HashSet<string> ValidSearchTypes
         = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
+            "AwsDynamoDb",
             "AzureSearch",
             "Database",
             "Null",

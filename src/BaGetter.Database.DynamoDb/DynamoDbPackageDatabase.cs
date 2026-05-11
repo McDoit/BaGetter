@@ -211,17 +211,32 @@ public class DynamoDbPackageDatabase : IPackageDatabase
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(version);
 
-        // Increment download counter on the version item.
-        await _client.UpdateItemAsync(new UpdateItemRequest
+        // Increment download counter only if the version item exists.
+        // This prevents recreating deleted rows via ADD upsert semantics.
+        try
         {
-            TableName = _tableName,
-            Key = MakeKey(id, version),
-            UpdateExpression = "ADD Downloads :one",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            await _client.UpdateItemAsync(new UpdateItemRequest
             {
-                { ":one", new AttributeValue { N = "1" } }
-            }
-        }, cancellationToken);
+                TableName = _tableName,
+                Key = MakeKey(id, version),
+                UpdateExpression = "ADD Downloads :one",
+                ConditionExpression = "attribute_exists(#pk) AND attribute_exists(#sk)",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    { "#pk", Pk },
+                    { "#sk", Sk }
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    { ":one", new AttributeValue { N = "1" } }
+                }
+            }, cancellationToken);
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            // Keep behavior aligned with EF implementation: missing package/version is ignored.
+            return;
+        }
 
         // Also maintain a per-id total on the META item (upsert).
         await _client.UpdateItemAsync(new UpdateItemRequest

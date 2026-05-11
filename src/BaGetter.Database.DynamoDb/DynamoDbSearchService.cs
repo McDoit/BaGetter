@@ -30,7 +30,6 @@ public class DynamoDbSearchService : ISearchService
     private const string SearchPartitionValue = "PKG";
     private const string SearchIndexName = "SearchIndex";
     private const string VersionSkPrefix = "VERSION#";
-    private const int MaxDependentResults = 20;
 
     private readonly IAmazonDynamoDB _client;
     private readonly string _tableName;
@@ -131,28 +130,12 @@ public class DynamoDbSearchService : ISearchService
     }
 
     /// <inheritdoc/>
-    public async Task<DependentsResponse> FindDependentsAsync(string packageId, CancellationToken cancellationToken)
+    public Task<DependentsResponse> FindDependentsAsync(string packageId, CancellationToken cancellationToken)
     {
-        // Full table scan for dependents — intentionally limited to top-20 results.
-        // For production use-cases with many packages, consider maintaining a separate
-        // dependents index.
-        var all = await ScanAllPackagesAsync(cancellationToken);
-
-        var dependents = all
-            .Where(p => p.Listed)
-            .Where(p => p.Dependencies.Any(d =>
-                string.Equals(d.Id, packageId, StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(p => p.Downloads)
-            .Take(MaxDependentResults)
-            .Select(p => new PackageDependent
-            {
-                Id = p.Id,
-                Description = p.Description,
-                TotalDownloads = p.Downloads
-            })
-            .ToList();
-
-        return _responseBuilder.BuildDependents(dependents);
+        // Dependents lookup is intentionally unsupported for DynamoDB v1.
+        // Implementing this with a full table scan is prohibitively expensive at scale.
+        // Return an empty set so callers get a safe, bounded response.
+        return Task.FromResult(_responseBuilder.BuildDependents([]));
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────
@@ -206,32 +189,4 @@ public class DynamoDbSearchService : ISearchService
         return packages;
     }
 
-    private async Task<List<Package>> ScanAllPackagesAsync(CancellationToken cancellationToken)
-    {
-        var packages = new List<Package>();
-        Dictionary<string, AttributeValue> lastKey = null;
-
-        do
-        {
-            var request = new ScanRequest
-            {
-                TableName = _tableName,
-                FilterExpression = "begins_with(#sk, :skPrefix)",
-                ExpressionAttributeNames = new Dictionary<string, string> { { "#sk", "SK" } },
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-                {
-                    { ":skPrefix", new AttributeValue(VersionSkPrefix) }
-                },
-                ExclusiveStartKey = lastKey
-            };
-
-            var response = await _client.ScanAsync(request, cancellationToken);
-            packages.AddRange(response.Items.Select(DynamoDbPackageDatabase.FromItemInternal));
-
-            lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
-        }
-        while (lastKey != null);
-
-        return packages;
-    }
 }

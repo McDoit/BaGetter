@@ -1,10 +1,13 @@
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+
 namespace BaGetter.Database.DynamoDb;
 
 /// <summary>
 /// Options for the DynamoDB package database provider.
 /// Bind from the <c>Database</c> configuration section.
 /// </summary>
-public class DynamoDbDatabaseOptions
+public class DynamoDbDatabaseOptions : IValidatableObject
 {
     /// <summary>
     /// The DynamoDB table name used to store package metadata.
@@ -24,4 +27,21 @@ public class DynamoDbDatabaseOptions
     /// or the instance metadata service.
     /// </summary>
     public string Region { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (string.IsNullOrWhiteSpace(TableName))
+        {
+            yield return new ValidationResult(
+                $"The {nameof(TableName)} option is required.",
+                [nameof(TableName)]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ServiceUrl) && !string.IsNullOrWhiteSpace(Region))
+        {
+            yield return new ValidationResult(
+                $"Only one of {nameof(ServiceUrl)} or {nameof(Region)} can be set.",
+                [nameof(ServiceUrl), nameof(Region)]);
+        }
+    }
 }

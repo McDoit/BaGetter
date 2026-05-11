@@ -117,7 +117,9 @@ public class DynamoDbTableInitializer : IHostedService
                 : "NONE";
 
             if (tableActive && gsiActive)
+            {
                 return;
+            }
         }
 
         throw new InvalidOperationException(

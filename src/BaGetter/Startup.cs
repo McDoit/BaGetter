@@ -60,6 +60,7 @@ public class Startup
 
         // Add database providers.
         app.AddAzureTableDatabase();
+        app.AddDynamoDbDatabase();
         app.AddMySqlDatabase();
         app.AddPostgreSqlDatabase();
         app.AddSqliteDatabase();
